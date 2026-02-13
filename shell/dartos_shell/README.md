@@ -1,4 +1,4 @@
-# dartos
+# dartos_shell
 
 A new Flutter project.
 
