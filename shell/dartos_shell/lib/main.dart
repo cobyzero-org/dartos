@@ -6,7 +6,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  WindowOptions options = const WindowOptions(fullScreen: true);
+  WindowOptions options = const WindowOptions(fullScreen: false);
 
   windowManager.waitUntilReadyToShow(options, () async {
     await windowManager.show();
