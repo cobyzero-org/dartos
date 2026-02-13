@@ -1,7 +1,18 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:window_manager/window_manager.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+
+  WindowOptions options = const WindowOptions(fullScreen: true);
+
+  windowManager.waitUntilReadyToShow(options, () async {
+    await windowManager.show();
+    await windowManager.focus();
+  });
+
   runApp(const DartOS());
 }
 
