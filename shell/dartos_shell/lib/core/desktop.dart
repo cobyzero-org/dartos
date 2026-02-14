@@ -1,8 +1,28 @@
+import 'package:dartos_shell/core/app_manager.dart';
 import 'package:flutter/material.dart';
 import 'window_manager.dart';
 
-class Desktop extends StatelessWidget {
+class Desktop extends StatefulWidget {
   const Desktop({super.key});
+
+  @override
+  State<Desktop> createState() => _DesktopState();
+}
+
+class _DesktopState extends State<Desktop> {
+  @override
+  void initState() {
+    super.initState();
+    _loadApps();
+  }
+
+  Future<void> _loadApps() async {
+    final apps = await AppManager().loadApps();
+    for (final app in apps) {
+      WindowManager.openWindow(app);
+    }
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
