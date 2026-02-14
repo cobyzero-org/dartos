@@ -22,4 +22,8 @@ class AppManager {
 
     return apps;
   }
+
+  void launchApp(String package) {
+    Process.start('dartos_runtime', ['/apps/$package/bin/app.aot']);
+  }
 }

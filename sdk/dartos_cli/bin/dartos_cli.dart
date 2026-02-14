@@ -41,19 +41,29 @@ void createApp(List<String> args) {
 }
 
 void buildApp() {
-  Process.runSync('flutter', [
-    'build',
-    'linux',
-    '--release',
-    '--target-platform=linux-arm64',
+  print("🔨 Compilando snapshot AOT...");
+
+  final result = Process.runSync('dart', [
+    'compile',
+    'aot-snapshot',
+    'lib/main.dart',
+    '-o',
+    'build/app.aot',
   ], runInShell: true);
 
-  print("Build ARM completado.");
+  print(result.stdout);
+  print(result.stderr);
+
+  if (result.exitCode == 0) {
+    print("✅ Snapshot generado");
+  } else {
+    print("❌ Error en compilación");
+  }
 }
 
 void packApp() {
   final currentDir = Directory.current.path;
-  final buildPath = '$currentDir/build/linux/arm64/release/bundle';
+  final buildPath = '$currentDir/build';
 
   final buildDir = Directory(buildPath);
 
@@ -63,7 +73,7 @@ void packApp() {
   }
 
   final appName = currentDir.split(Platform.pathSeparator).last;
-  final outputFile = File('$currentDir/$appName.appdart');
+  final outputFile = File('$currentDir/$appName.aot');
 
   final archive = Archive();
 
@@ -81,10 +91,11 @@ void packApp() {
   // 2️⃣ Crear manifest.json automático
   final manifest = {
     "name": appName,
-    "package": "com.fox.$appName",
+    "package": "com.dartos.$appName",
     "version": "1.0.0",
-    "entry": "bin/app",
+    "entry": "bin/app.aot",
     "icon": "assets/icon.png",
+    "runtime": "dartos_runtime",
     "permissions": [],
   };
 

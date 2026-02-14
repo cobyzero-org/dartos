@@ -1,4 +1,4 @@
-import 'package:dartos_shell/core/app_manager.dart';
+import 'package:dartos_shell/system/app_manager.dart';
 import 'package:flutter/material.dart';
 import 'window_manager.dart';
 

@@ -1,0 +1,6 @@
+{
+    "name": "TestApp",
+    "package": "com.fox.testapp",
+    "version": "1.0.0",
+    "entry": "lib/main.dart"
+}
