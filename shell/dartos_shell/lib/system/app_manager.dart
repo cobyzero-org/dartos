@@ -1,29 +1,36 @@
 import 'dart:io';
-import 'dart:convert';
 
-import 'package:dartos_shell/core/app.dart';
+import 'dart:isolate';
 
 class AppManager {
-  final String appsPath = "/apps";
+  final Map<String, Isolate> _runningApps = {};
 
-  Future<List<App>> loadApps() async {
-    final dir = Directory(appsPath);
-    if (!await dir.exists()) return [];
+  List<String> getInstalledApps() {
+    final appsDir = Directory('/apps');
 
-    final apps = <App>[];
+    if (!appsDir.existsSync()) return [];
 
-    for (var entity in dir.listSync()) {
-      final manifest = File("${entity.path}/manifest.json");
-      if (manifest.existsSync()) {
-        final data = jsonDecode(manifest.readAsStringSync());
-        apps.add(App.fromManifest(entity.path, data));
-      }
-    }
-
-    return apps;
+    return appsDir
+        .listSync()
+        .whereType<Directory>()
+        .map((dir) => dir.path.split('/').last)
+        .toList();
   }
 
-  void launchApp(String package) {
-    Process.start('dartos_runtime', ['/apps/$package/bin/app.aot']);
+  Future<void> launchApp(String package) async {
+    final appPath = "/apps/$package/lib/main.dart";
+
+    if (!File(appPath).existsSync()) {
+      print("App no encontrada: $package");
+      return;
+    }
+
+    final receivePort = ReceivePort();
+
+    await Isolate.spawnUri(Uri.file(appPath), [], receivePort.sendPort);
+
+    receivePort.listen((message) {
+      print("Mensaje desde $package: $message");
+    });
   }
 }

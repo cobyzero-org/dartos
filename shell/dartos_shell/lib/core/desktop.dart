@@ -1,6 +1,5 @@
 import 'package:dartos_shell/system/app_manager.dart';
 import 'package:flutter/material.dart';
-import 'window_manager.dart';
 
 class Desktop extends StatefulWidget {
   const Desktop({super.key});
@@ -10,17 +9,18 @@ class Desktop extends StatefulWidget {
 }
 
 class _DesktopState extends State<Desktop> {
+  final List<String> _apps = [];
   @override
   void initState() {
     super.initState();
-    _loadApps();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadApps();
+    });
   }
 
   Future<void> _loadApps() async {
-    final apps = await AppManager().loadApps();
-    for (final app in apps) {
-      WindowManager.openWindow(app);
-    }
+    final apps = AppManager().getInstalledApps();
+    _apps.addAll(apps);
     setState(() {});
   }
 
@@ -29,26 +29,17 @@ class _DesktopState extends State<Desktop> {
     return Scaffold(
       body: Stack(
         children: [
-          // Fondo
-          Container(color: Colors.black),
-
-          // Ventanas abiertas
-          ...WindowManager.windows.map(
-            (w) => Positioned(
-              left: w.position.dx,
-              top: w.position.dy,
-              child: Draggable(
-                feedback: w.widget,
-                childWhenDragging: Container(),
-                onDragEnd: (details) {
-                  w.position = details.offset;
+          Container(color: Colors.grey),
+          Column(
+            children: _apps.map((pkg) {
+              return ElevatedButton(
+                onPressed: () {
+                  AppManager().launchApp(pkg);
                 },
-                child: w.widget,
-              ),
-            ),
+                child: Text(pkg),
+              );
+            }).toList(),
           ),
-
-          // Dock
           const Align(alignment: Alignment.bottomCenter, child: Dock()),
         ],
       ),
