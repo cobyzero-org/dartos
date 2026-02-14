@@ -131,9 +131,9 @@ void installApp(List<String> args) {
   final bytes = file.readAsBytesSync();
   final archive = ZipDecoder().decodeBytes(bytes);
 
-  // 1️⃣ Leer manifest
   final manifestFile = archive.files.firstWhere(
-    (f) => f.name == 'manifest.json',
+    (f) => f.name.endsWith('manifest.json'),
+    orElse: () => throw Exception("manifest.json no encontrado en el paquete"),
   );
 
   final manifestContent = utf8.decode(manifestFile.content as List<int>);
