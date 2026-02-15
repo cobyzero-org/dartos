@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 
 void main(List<String> args) {
   if (args.isEmpty) {
@@ -20,7 +21,21 @@ void main(List<String> args) {
       packApp();
       break;
     case 'install':
-      installApp(args);
+      if (args.length < 2) {
+        print("Uso: dartos install archivo.appdart");
+        return;
+      }
+      installApp(args[1]);
+      break;
+    case 'list':
+      listApps();
+      break;
+    case 'run':
+      if (args.length < 2) {
+        print("Uso: dartos run package.name");
+        return;
+      }
+      runApp(args[1]);
       break;
     default:
       print("Comando no reconocido");
@@ -41,127 +56,185 @@ void createApp(List<String> args) {
 }
 
 void buildApp() {
-  print("🔨 Compilando snapshot AOT...");
+  print("🔨 Compilando kernel portable...");
+
+  final buildDir = Directory('build');
+  if (!buildDir.existsSync()) {
+    buildDir.createSync(recursive: true);
+  }
 
   final result = Process.runSync('dart', [
     'compile',
-    'aot-snapshot',
+    'kernel',
     'lib/main.dart',
     '-o',
-    'build/app.aot',
+    'build/app.dill',
   ], runInShell: true);
 
   print(result.stdout);
   print(result.stderr);
 
   if (result.exitCode == 0) {
-    print("✅ Snapshot generado");
+    print("✅ Kernel generado (portable)");
   } else {
     print("❌ Error en compilación");
   }
 }
 
 void packApp() {
-  final currentDir = Directory.current.path;
-  final buildPath = '$currentDir/build';
+  final buildFile = File('build/app.dill');
+  final manifestFile = File('manifest.json');
 
-  final buildDir = Directory(buildPath);
-
-  if (!buildDir.existsSync()) {
-    print("❌ No se encontró build ARM. Ejecuta: dartos build");
+  if (!buildFile.existsSync()) {
+    print("❌ No existe build/app.dill. Ejecuta: dartos build");
     return;
   }
 
-  final appName = currentDir.split(Platform.pathSeparator).last;
-  final outputFile = File('$currentDir/$appName.aot');
+  if (!manifestFile.existsSync()) {
+    print("❌ No existe manifest.json");
+    return;
+  }
+
+  final appName = Directory.current.path.split(Platform.pathSeparator).last;
 
   final archive = Archive();
 
-  // 1️⃣ Agregar binario principal
-  final binary = File('$buildPath/$appName');
-  if (!binary.existsSync()) {
-    print("❌ No se encontró el binario principal.");
-    return;
+  // Agregar app.dill
+  archive.addFile(
+    ArchiveFile(
+      'app.dill',
+      buildFile.lengthSync(),
+      buildFile.readAsBytesSync(),
+    ),
+  );
+
+  // Agregar manifest.json
+  archive.addFile(
+    ArchiveFile(
+      'manifest.json',
+      manifestFile.lengthSync(),
+      manifestFile.readAsBytesSync(),
+    ),
+  );
+
+  // Agregar assets si existen
+  final assetsDir = Directory('assets');
+  if (assetsDir.existsSync()) {
+    for (var file in assetsDir.listSync(recursive: true)) {
+      if (file is File) {
+        final relativePath = file.path.replaceFirst('${assetsDir.path}/', '');
+        archive.addFile(
+          ArchiveFile(
+            'assets/$relativePath',
+            file.lengthSync(),
+            file.readAsBytesSync(),
+          ),
+        );
+      }
+    }
   }
 
-  archive.addFile(
-    ArchiveFile('bin/app', binary.lengthSync(), binary.readAsBytesSync()),
-  );
-
-  // 2️⃣ Crear manifest.json automático
-  final manifest = {
-    "name": appName,
-    "package": "com.dartos.$appName",
-    "version": "1.0.0",
-    "entry": "bin/app.aot",
-    "icon": "assets/icon.png",
-    "runtime": "dartos_runtime",
-    "permissions": [],
-  };
-
-  final manifestBytes = utf8.encode(jsonEncode(manifest));
-
-  archive.addFile(
-    ArchiveFile('manifest.json', manifestBytes.length, manifestBytes),
-  );
-
-  // 3️⃣ Comprimir
   final zipEncoder = ZipEncoder();
   final zipData = zipEncoder.encode(archive);
 
+  final outputFile = File('$appName.appdart');
   outputFile.writeAsBytesSync(zipData);
 
-  print("✅ App empaquetada como $appName.appdart");
+  print("✅ Paquete generado correctamente: $appName.appdart");
 }
 
-void installApp(List<String> args) {
-  if (args.length < 2) {
-    print("Uso: dartos install <archivo.appdart>");
+void installApp(String filePath) {
+  final appFile = File(filePath);
+
+  if (!appFile.existsSync()) {
+    print("❌ Archivo no encontrado");
     return;
   }
 
-  final filePath = args[1];
-  final file = File(filePath);
-
-  if (!file.existsSync()) {
-    print("❌ Archivo no encontrado.");
-    return;
-  }
-
-  final bytes = file.readAsBytesSync();
+  final bytes = appFile.readAsBytesSync();
   final archive = ZipDecoder().decodeBytes(bytes);
 
-  final manifestFile = archive.files.firstWhere(
-    (f) => f.name.endsWith('manifest.json'),
-    orElse: () => throw Exception("manifest.json no encontrado en el paquete"),
-  );
+  // Leer manifest primero
+  ArchiveFile? manifestArchive;
+  for (var file in archive.files) {
+    if (file.name == 'manifest.json') {
+      manifestArchive = file;
+      break;
+    }
+  }
 
-  final manifestContent = utf8.decode(manifestFile.content as List<int>);
+  if (manifestArchive == null) {
+    print("❌ manifest.json no encontrado");
+    return;
+  }
+
+  final manifestContent = utf8.decode(manifestArchive.content as List<int>);
   final manifest = jsonDecode(manifestContent);
 
   final packageName = manifest['package'];
 
-  final installPath = '/apps/$packageName';
-  final installDir = Directory(installPath);
+  final installDir = Directory('/home/fox/.dartos/apps/$packageName');
 
-  if (!installDir.existsSync()) {
-    installDir.createSync(recursive: true);
+  if (installDir.existsSync()) {
+    installDir.deleteSync(recursive: true);
   }
 
-  // 2️⃣ Extraer archivos
-  for (final file in archive.files) {
-    final filename = file.name;
-    final outPath = '$installPath/$filename';
+  installDir.createSync(recursive: true);
 
-    if (file.isFile) {
-      final outFile = File(outPath);
-      outFile.createSync(recursive: true);
-      outFile.writeAsBytesSync(file.content as List<int>);
+  for (var file in archive.files) {
+    final outFile = File('${installDir.path}/${file.name}');
+    outFile.createSync(recursive: true);
+    outFile.writeAsBytesSync(file.content as List<int>);
+  }
+
+  print("✅ App instalada: $packageName");
+}
+
+void runApp(String packageName) {
+  final appPath = '/home/fox/.dartos/apps/$packageName/app.dill';
+
+  final file = File(appPath);
+
+  if (!file.existsSync()) {
+    print("❌ App no encontrada");
+    return;
+  }
+
+  Process.start('dart', [appPath], mode: ProcessStartMode.inheritStdio);
+}
+
+void listApps() {
+  final appsDir = Directory('/home/fox/.dartos/apps');
+
+  if (!appsDir.existsSync()) {
+    print("📦 No hay apps instaladas.");
+    return;
+  }
+
+  final apps = appsDir.listSync().whereType<Directory>();
+
+  if (apps.isEmpty) {
+    print("📦 No hay apps instaladas.");
+    return;
+  }
+
+  print("📱 Apps instaladas:\n");
+
+  for (var appDir in apps) {
+    final manifestFile = File('${appDir.path}/manifest.json');
+
+    if (!manifestFile.existsSync()) {
+      continue;
     }
+
+    final manifest = jsonDecode(manifestFile.readAsStringSync());
+
+    final name = manifest['name'] ?? 'Sin nombre';
+    final package = manifest['package'] ?? 'Desconocido';
+    final version = manifest['version'] ?? '0.0.0';
+
+    print("• $name");
+    print("   Package: $package");
+    print("   Version: $version\n");
   }
-
-  // 3️⃣ Dar permiso ejecutable al binario
-  Process.runSync('chmod', ['+x', '$installPath/bin/app']);
-
-  print("✅ App instalada en $installPath");
 }

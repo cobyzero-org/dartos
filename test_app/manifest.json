@@ -2,5 +2,6 @@
     "name": "TestApp",
     "package": "com.dartos.testapp",
     "version": "1.0.0",
-    "entry": "lib/main.dart"
+    "entry": "app.dill",
+    "sdk": "1.0"
 }
