@@ -28,10 +28,17 @@ class SocketServer {
   }
 
   void launchApp(String packageName) {
-    final path = '/home/fox/.dartos/apps/$packageName/app.dill';
+    final home = Platform.environment['HOME'];
+
+    if (home == null) {
+      print("❌ No se pudo determinar el HOME del usuario");
+      return;
+    }
+
+    final path = '$home/.dartos/apps/$packageName/app.dill';
 
     if (!File(path).existsSync()) {
-      print("❌ App no encontrada");
+      print("❌ App no encontrada en $path");
       return;
     }
 

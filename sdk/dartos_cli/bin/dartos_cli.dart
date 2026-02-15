@@ -172,8 +172,14 @@ void installApp(String filePath) {
   final manifest = jsonDecode(manifestContent);
 
   final packageName = manifest['package'];
+  final home = Platform.environment['HOME'];
 
-  final installDir = Directory('/home/fox/.dartos/apps/$packageName');
+  if (home == null) {
+    print("❌ No se pudo determinar el HOME del usuario");
+    return;
+  }
+
+  final installDir = Directory('$home/.dartos/apps/$packageName');
 
   if (installDir.existsSync()) {
     installDir.deleteSync(recursive: true);
