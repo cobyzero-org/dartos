@@ -31,10 +31,38 @@ class AppManager {
 
     final platform = detectPlatform();
 
-    String executablePath;
-
     if (platform == 'linux') {
-      executablePath = '${appDir.path}/$package';
+      final files = appDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => !f.path.endsWith('.json'))
+          .toList();
+
+      if (files.isEmpty) {
+        print("❌ Ejecutable no encontrado en Linux");
+        return;
+      }
+
+      final executable = files.first;
+
+      final process = await Process.start(
+        executable.path,
+        [],
+        workingDirectory: appDir.path,
+        environment: Platform.environment,
+      );
+
+      print("🚀 App Linux lanzada: $package (PID: ${process.pid})");
+
+      process.stdout.transform(utf8.decoder).listen((data) {
+        print("APP STDOUT: $data");
+      });
+
+      process.stderr.transform(utf8.decoder).listen((data) {
+        print("APP STDERR: $data");
+      });
+
+      return;
     } else if (platform == 'macos') {
       final appBundles = appDir
           .listSync()
@@ -55,29 +83,5 @@ class AppManager {
       print("❌ Plataforma no soportada");
       return;
     }
-
-    final executable = File(executablePath);
-
-    if (!executable.existsSync()) {
-      print("❌ Ejecutable no encontrado");
-      return;
-    }
-
-    final process = await Process.start(
-      executable.path,
-      [],
-      workingDirectory: appDir.path,
-      mode: ProcessStartMode.detachedWithStdio,
-    );
-
-    print("🚀 App lanzada: $package (PID: ${process.pid})");
-
-    process.stdout.transform(utf8.decoder).listen((data) {
-      print("APP STDOUT: $data");
-    });
-
-    process.stderr.transform(utf8.decoder).listen((data) {
-      print("APP STDERR: $data");
-    });
   }
 }
