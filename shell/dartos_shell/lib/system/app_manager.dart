@@ -36,7 +36,6 @@ class AppManager {
     if (platform == 'linux') {
       executablePath = '${appDir.path}/$package';
     } else if (platform == 'macos') {
-      // Buscar automáticamente el .app dentro del directorio
       final appBundles = appDir
           .listSync()
           .whereType<Directory>()
@@ -48,26 +47,10 @@ class AppManager {
         return;
       }
 
-      final macExecutableDir = Directory(
-        '${appBundles.first.path}/Contents/MacOS',
-      );
+      final process = await Process.start('open', [appBundles.first.path]);
 
-      if (!macExecutableDir.existsSync()) {
-        print("❌ Carpeta Contents/MacOS no encontrada");
-        return;
-      }
-
-      final executables = macExecutableDir
-          .listSync()
-          .whereType<File>()
-          .toList();
-
-      if (executables.isEmpty) {
-        print("❌ Ejecutable dentro del .app no encontrado");
-        return;
-      }
-
-      executablePath = executables.first.path;
+      print("🚀 App macOS lanzada: $package (PID: ${process.pid})");
+      return;
     } else {
       print("❌ Plataforma no soportada");
       return;

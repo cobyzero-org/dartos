@@ -43,7 +43,7 @@ Directory? findMacBundle() {
 
   if (!macDir.existsSync()) return null;
 
-  final bundle = Directory('build/macos/Build/Products/Debug');
+  final bundle = Directory('build/macos/Build/Products/Release');
 
   if (!bundle.existsSync()) return null;
 

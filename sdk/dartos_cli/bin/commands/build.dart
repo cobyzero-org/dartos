@@ -13,7 +13,7 @@ class BuildDartOs {
       final result = await Process.start('flutter', [
         'build',
         'macos',
-        '--debug',
+        '--release',
       ], runInShell: true);
 
       await stdout.addStream(result.stdout);
