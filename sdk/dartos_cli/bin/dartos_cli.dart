@@ -82,35 +82,43 @@ Future<void> buildApp() async {
 }
 
 Future<void> packApp(String packageName) async {
-  final buildDir = _findLinuxBundle();
+  final bundleDir = _findLinuxBundle();
 
-  if (buildDir == null) {
+  if (bundleDir == null) {
     print("❌ No se encontró bundle Linux.");
     return;
   }
 
-  final encoder = ZipFileEncoder();
-  encoder.create("$packageName.dartapp");
+  final outputPath = File("$packageName.dartapp").absolute.path;
 
-  // Agrega manifest primero
-  final manifestFile = File('manifest.json');
+  // Si ya existe, elimínalo
+  final existing = File(outputPath);
+  if (existing.existsSync()) {
+    existing.deleteSync();
+  }
+
+  final encoder = ZipFileEncoder();
+  encoder.create(outputPath);
+
+  // Crear manifest temporal
+  final manifestFile = File("manifest_temp.json");
   manifestFile.writeAsStringSync(
     jsonEncode({
       "package": packageName,
-      "arch": Platform.version.contains("arm64") ? "arm64" : "x64",
+      "arch": Platform.localHostname.contains("arm") ? "arm64" : "x64",
     }),
   );
 
   encoder.addFile(manifestFile);
 
-  // Agrega bundle completo
-  encoder.addDirectory(buildDir, includeDirName: true);
+  // Agregar SOLO el bundle real
+  encoder.addDirectory(bundleDir, includeDirName: true);
 
   encoder.close();
 
   manifestFile.deleteSync();
 
-  print("✅ Paquete generado correctamente");
+  print("✅ Paquete generado correctamente: $outputPath");
 }
 
 Future<void> installApp(String filePath) async {
@@ -233,9 +241,7 @@ String getDartosRoot() {
 Directory? _findLinuxBundle() {
   final linuxDir = Directory('build/linux');
 
-  if (!linuxDir.existsSync()) {
-    return null;
-  }
+  if (!linuxDir.existsSync()) return null;
 
   for (final arch in linuxDir.listSync()) {
     if (arch is Directory) {
