@@ -2,26 +2,23 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import '../utils.dart';
 
 class InstallDartOs {
   static Future<void> installApp(String filePath) async {
-    final home = Platform.environment['HOME'];
-    final rootDir = Directory('$home/.dartos/apps');
-
-    if (!rootDir.existsSync()) {
-      rootDir.createSync(recursive: true);
-    }
-
-    final bytes = File(filePath).readAsBytesSync();
+    final bytes = await File(filePath).readAsBytes();
     final archive = ZipDecoder().decodeBytes(bytes);
 
+    // 🔹 Leer manifest
     String? packageName;
+    List platforms = [];
 
     for (final file in archive) {
-      if (file.name.endsWith('manifest.json')) {
+      if (file.name == 'manifest.json') {
         final content = utf8.decode(file.content as List<int>);
         final json = jsonDecode(content);
         packageName = json['package'];
+        platforms = json['platforms'] ?? [];
         break;
       }
     }
@@ -31,22 +28,54 @@ class InstallDartOs {
       return;
     }
 
+    final currentPlatform = detectPlatform();
+
+    if (!platforms.contains(currentPlatform)) {
+      print("❌ Esta app no soporta tu plataforma: $currentPlatform");
+      return;
+    }
+
+    final rootDir = Directory('${getDartosRoot()}/apps');
+    if (!rootDir.existsSync()) {
+      rootDir.createSync(recursive: true);
+    }
+
     final appDir = Directory('${rootDir.path}/$packageName');
 
     if (appDir.existsSync()) {
       appDir.deleteSync(recursive: true);
     }
 
+    // 🔹 Extraer solo la plataforma actual
     for (final file in archive) {
-      final filename = file.name;
+      if (!file.isFile) continue;
 
-      if (file.isFile) {
-        final outFile = File('${appDir.path}/$filename');
+      final prefix = 'bundle/$currentPlatform/';
+
+      if (file.name.startsWith(prefix)) {
+        final relativePath = file.name.substring(prefix.length);
+        final outFile = File('${appDir.path}/$relativePath');
+
         outFile.createSync(recursive: true);
         outFile.writeAsBytesSync(file.content as List<int>);
+
+        // 🔹 Aplicar permisos ejecutables
+        if (Platform.isLinux || Platform.isMacOS) {
+          try {
+            Process.runSync('chmod', ['+x', outFile.path]);
+          } catch (_) {}
+        }
+      }
+
+      // Guardar manifest también
+      if (file.name == 'manifest.json') {
+        final manifestOut = File('${appDir.path}/manifest.json');
+        manifestOut.createSync(recursive: true);
+        manifestOut.writeAsBytesSync(file.content as List<int>);
       }
     }
 
-    print("✅ App instalada: $packageName");
+    print("✅ App instalada correctamente: $packageName");
+    print("🖥 Plataforma instalada: $currentPlatform");
   }
 }

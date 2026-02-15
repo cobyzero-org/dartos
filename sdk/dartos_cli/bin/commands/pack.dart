@@ -3,38 +3,54 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:archive/archive_io.dart';
+import '../utils.dart';
 
 class PackDartOs {
   static Future<void> packApp(String packageName) async {
-    final bundleDir = _findLinuxBundle();
+    final archive = Archive();
 
-    if (bundleDir == null) {
-      print("❌ No se encontró bundle Linux.");
+    final platforms = <String, Directory>{};
+
+    final linuxBundle = findLinuxBundle();
+    if (linuxBundle != null) {
+      platforms['linux'] = linuxBundle;
+    }
+
+    final macBundle = findMacBundle();
+    if (macBundle != null) {
+      platforms['macos'] = macBundle;
+    }
+
+    if (platforms.isEmpty) {
+      print("❌ No se encontró ningún build (linux o macos).");
       return;
     }
 
-    final archive = Archive();
-
-    // 🔹 Agregar manifest como manifest.json
+    // 🔹 Crear manifest
     final manifest = jsonEncode({
       "package": packageName,
-      "arch": Platform.version.contains("arm64") ? "arm64" : "x64",
+      "platforms": platforms.keys.toList(),
     });
 
     archive.addFile(
       ArchiveFile('manifest.json', manifest.length, utf8.encode(manifest)),
     );
 
-    // 🔹 Agregar bundle completo manualmente
-    await for (final entity in bundleDir.list(recursive: true)) {
-      if (entity is File) {
-        final relativePath = entity.path.substring(bundleDir.path.length + 1);
+    // 🔹 Agregar bundles por plataforma
+    for (final entry in platforms.entries) {
+      final platform = entry.key;
+      final bundleDir = entry.value;
 
-        final bytes = await entity.readAsBytes();
+      await for (final entity in bundleDir.list(recursive: true)) {
+        if (entity is File) {
+          final relativePath = entity.path.substring(bundleDir.path.length + 1);
 
-        archive.addFile(
-          ArchiveFile('bundle/$relativePath', bytes.length, bytes),
-        );
+          final bytes = await entity.readAsBytes();
+
+          archive.addFile(
+            ArchiveFile('bundle/$platform/$relativePath', bytes.length, bytes),
+          );
+        }
       }
     }
 
@@ -45,23 +61,6 @@ class PackDartOs {
     await outputFile.writeAsBytes(zipData);
 
     print("✅ Paquete generado correctamente: ${outputFile.path}");
-  }
-
-  static Directory? _findLinuxBundle() {
-    final linuxDir = Directory('build/linux');
-
-    if (!linuxDir.existsSync()) return null;
-
-    for (final arch in linuxDir.listSync()) {
-      if (arch is Directory) {
-        final bundle = Directory('${arch.path}/release/bundle');
-
-        if (bundle.existsSync()) {
-          return bundle;
-        }
-      }
-    }
-
-    return null;
+    print("📦 Plataformas incluidas: ${platforms.keys.join(", ")}");
   }
 }

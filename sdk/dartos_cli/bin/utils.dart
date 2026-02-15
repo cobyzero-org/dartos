@@ -37,3 +37,22 @@ Directory? findLinuxBundle() {
 
   return null;
 }
+
+Directory? findMacBundle() {
+  final macDir = Directory('build/macos');
+
+  if (!macDir.existsSync()) return null;
+
+  final bundle = Directory('build/macos/Build/Products/Debug');
+
+  if (!bundle.existsSync()) return null;
+
+  return bundle;
+}
+
+String detectPlatform() {
+  if (Platform.isLinux) return 'linux';
+  if (Platform.isMacOS) return 'macos';
+  if (Platform.isWindows) return 'windows';
+  throw UnsupportedError('Plataforma no soportada');
+}
