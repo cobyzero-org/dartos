@@ -78,7 +78,7 @@ Future<void> buildApp() async {
 }
 
 Future<void> packApp(String packageName) async {
-  final buildDir = Directory('build/linux/x64/release/bundle');
+  final buildDir = Directory('build/linux/arm64/release/bundle');
 
   if (!buildDir.existsSync()) {
     print("❌ No existe el bundle. Ejecuta dartos build primero.");
