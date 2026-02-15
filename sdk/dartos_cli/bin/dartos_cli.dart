@@ -85,38 +85,32 @@ Future<void> packApp(String packageName) async {
   final buildDir = _findLinuxBundle();
 
   if (buildDir == null) {
-    print("❌ No se encontró bundle Linux. Ejecuta dartos build.");
+    print("❌ No se encontró bundle Linux.");
     return;
   }
 
-  final tempDir = Directory('.dartos_temp');
-  if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
-  tempDir.createSync();
-
-  // Copiar bundle
-  final bundleTarget = Directory('${tempDir.path}/bundle');
-  await _copyDirectory(buildDir, bundleTarget);
-
-  // Crear manifest
-  final manifest = {
-    "package": packageName,
-    "version": "1.0.0",
-    "entry": packageName,
-  };
-
-  File('${tempDir.path}/manifest.json').writeAsStringSync(jsonEncode(manifest));
-
-  // Crear zip
   final encoder = ZipFileEncoder();
-  final outputFile = "$packageName.dartapp";
+  encoder.create("$packageName.dartapp");
 
-  encoder.create(outputFile);
-  encoder.addDirectory(tempDir);
+  // Agrega manifest primero
+  final manifestFile = File('manifest.json');
+  manifestFile.writeAsStringSync(
+    jsonEncode({
+      "package": packageName,
+      "arch": Platform.version.contains("arm64") ? "arm64" : "x64",
+    }),
+  );
+
+  encoder.addFile(manifestFile);
+
+  // Agrega bundle completo
+  encoder.addDirectory(buildDir, includeDirName: true);
+
   encoder.close();
 
-  tempDir.deleteSync(recursive: true);
+  manifestFile.deleteSync();
 
-  print("✅ Paquete generado: $outputFile");
+  print("✅ Paquete generado correctamente");
 }
 
 Future<void> installApp(String filePath) async {
@@ -234,23 +228,6 @@ String getDartosRoot() {
   }
 
   throw UnsupportedError('Plataforma no soportada');
-}
-
-Future<void> _copyDirectory(Directory source, Directory destination) async {
-  if (!destination.existsSync()) {
-    destination.createSync(recursive: true);
-  }
-
-  await for (var entity in source.list(recursive: false)) {
-    if (entity is Directory) {
-      await _copyDirectory(
-        entity,
-        Directory('${destination.path}/${entity.uri.pathSegments.last}'),
-      );
-    } else if (entity is File) {
-      await entity.copy('${destination.path}/${entity.uri.pathSegments.last}');
-    }
-  }
 }
 
 Directory? _findLinuxBundle() {
