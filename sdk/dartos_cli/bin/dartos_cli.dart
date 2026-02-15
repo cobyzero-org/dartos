@@ -18,6 +18,10 @@ void main(List<String> args) {
       buildApp();
       break;
     case 'pack':
+      if (args.length < 2) {
+        print("Uso: dartos pack <package>");
+        return;
+      }
       packApp(args[1]);
       break;
     case 'install':
@@ -78,10 +82,10 @@ Future<void> buildApp() async {
 }
 
 Future<void> packApp(String packageName) async {
-  final buildDir = Directory('build/linux/arm64/release/bundle');
+  final buildDir = _findLinuxBundle();
 
-  if (!buildDir.existsSync()) {
-    print("❌ No existe el bundle. Ejecuta dartos build primero.");
+  if (buildDir == null) {
+    print("❌ No se encontró bundle Linux. Ejecuta dartos build.");
     return;
   }
 
@@ -247,4 +251,24 @@ Future<void> _copyDirectory(Directory source, Directory destination) async {
       await entity.copy('${destination.path}/${entity.uri.pathSegments.last}');
     }
   }
+}
+
+Directory? _findLinuxBundle() {
+  final linuxDir = Directory('build/linux');
+
+  if (!linuxDir.existsSync()) {
+    return null;
+  }
+
+  for (final arch in linuxDir.listSync()) {
+    if (arch is Directory) {
+      final bundle = Directory('${arch.path}/release/bundle');
+
+      if (bundle.existsSync()) {
+        return bundle;
+      }
+    }
+  }
+
+  return null;
 }
