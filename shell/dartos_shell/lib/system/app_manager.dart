@@ -1,14 +1,15 @@
 import 'dart:io';
 
-import 'dart:isolate';
+import 'package:dartos_shell/utils/path.dart';
 
 class AppManager {
-  final Map<String, Isolate> _runningApps = {};
-
   List<String> getInstalledApps() {
-    final appsDir = Directory('/apps');
+    final appsDir = Directory('${getDartosRoot()}/apps');
 
-    if (!appsDir.existsSync()) return [];
+    if (!appsDir.existsSync()) {
+      print("❌ No se pudo encontrar el directorio de apps");
+      return [];
+    }
 
     return appsDir
         .listSync()
@@ -18,19 +19,27 @@ class AppManager {
   }
 
   Future<void> launchApp(String package) async {
-    final appPath = "/apps/$package/lib/main.dart";
+    final home = Platform.environment['HOME'];
+    final appDir = Directory('$home/.dartos/apps/$package/bundle');
 
-    if (!File(appPath).existsSync()) {
-      print("App no encontrada: $package");
+    if (!appDir.existsSync()) {
+      print("❌ App no encontrada");
       return;
     }
 
-    final receivePort = ReceivePort();
+    final executable = File('${appDir.path}/$package');
 
-    await Isolate.spawnUri(Uri.file(appPath), [], receivePort.sendPort);
+    if (!executable.existsSync()) {
+      print("❌ Ejecutable no encontrado");
+      return;
+    }
 
-    receivePort.listen((message) {
-      print("Mensaje desde $package: $message");
-    });
+    final process = await Process.start(
+      executable.path,
+      [],
+      workingDirectory: appDir.path,
+    );
+
+    print("🚀 App lanzada: $package (PID: ${process.pid})");
   }
 }

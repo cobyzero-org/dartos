@@ -18,7 +18,7 @@ void main(List<String> args) {
       buildApp();
       break;
     case 'pack':
-      packApp();
+      packApp(args[1]);
       break;
     case 'install':
       if (args.length < 2) {
@@ -55,142 +55,107 @@ void createApp(List<String> args) {
   print("App $name creada.");
 }
 
-void buildApp() {
-  print("🔨 Compilando kernel portable...");
+Future<void> buildApp() async {
+  print("🔨 Compilando Flutter Linux...");
 
-  final buildDir = Directory('build');
-  if (!buildDir.existsSync()) {
-    buildDir.createSync(recursive: true);
-  }
-
-  final result = Process.runSync('dart', [
-    'compile',
-    'kernel',
-    'lib/main.dart',
-    '-o',
-    'build/app.dill',
+  final result = await Process.start('flutter', [
+    'build',
+    'linux',
+    '--release',
   ], runInShell: true);
 
-  print(result.stdout);
-  print(result.stderr);
+  await stdout.addStream(result.stdout);
+  await stderr.addStream(result.stderr);
 
-  if (result.exitCode == 0) {
-    print("✅ Kernel generado (portable)");
-  } else {
-    print("❌ Error en compilación");
+  final exitCode = await result.exitCode;
+
+  if (exitCode != 0) {
+    print("❌ Error en build");
+    return;
   }
+
+  print("✅ Build completado");
 }
 
-void packApp() {
-  final buildFile = File('build/app.dill');
-  final manifestFile = File('manifest.json');
+Future<void> packApp(String packageName) async {
+  final buildDir = Directory('build/linux/x64/release/bundle');
 
-  if (!buildFile.existsSync()) {
-    print("❌ No existe build/app.dill. Ejecuta: dartos build");
+  if (!buildDir.existsSync()) {
+    print("❌ No existe el bundle. Ejecuta dartos build primero.");
     return;
   }
 
-  if (!manifestFile.existsSync()) {
-    print("❌ No existe manifest.json");
-    return;
-  }
+  final tempDir = Directory('.dartos_temp');
+  if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+  tempDir.createSync();
 
-  final appName = Directory.current.path.split(Platform.pathSeparator).last;
+  // Copiar bundle
+  final bundleTarget = Directory('${tempDir.path}/bundle');
+  await _copyDirectory(buildDir, bundleTarget);
 
-  final archive = Archive();
+  // Crear manifest
+  final manifest = {
+    "package": packageName,
+    "version": "1.0.0",
+    "entry": packageName,
+  };
 
-  // Agregar app.dill
-  archive.addFile(
-    ArchiveFile(
-      'app.dill',
-      buildFile.lengthSync(),
-      buildFile.readAsBytesSync(),
-    ),
-  );
+  File('${tempDir.path}/manifest.json').writeAsStringSync(jsonEncode(manifest));
 
-  // Agregar manifest.json
-  archive.addFile(
-    ArchiveFile(
-      'manifest.json',
-      manifestFile.lengthSync(),
-      manifestFile.readAsBytesSync(),
-    ),
-  );
+  // Crear zip
+  final encoder = ZipFileEncoder();
+  final outputFile = "$packageName.dartapp";
 
-  // Agregar assets si existen
-  final assetsDir = Directory('assets');
-  if (assetsDir.existsSync()) {
-    for (var file in assetsDir.listSync(recursive: true)) {
-      if (file is File) {
-        final relativePath = file.path.replaceFirst('${assetsDir.path}/', '');
-        archive.addFile(
-          ArchiveFile(
-            'assets/$relativePath',
-            file.lengthSync(),
-            file.readAsBytesSync(),
-          ),
-        );
-      }
-    }
-  }
+  encoder.create(outputFile);
+  encoder.addDirectory(tempDir);
+  encoder.close();
 
-  final zipEncoder = ZipEncoder();
-  final zipData = zipEncoder.encode(archive);
+  tempDir.deleteSync(recursive: true);
 
-  final outputFile = File('$appName.appdart');
-  outputFile.writeAsBytesSync(zipData);
-
-  print("✅ Paquete generado correctamente: $appName.appdart");
+  print("✅ Paquete generado: $outputFile");
 }
 
-void installApp(String filePath) {
-  final appFile = File(filePath);
+Future<void> installApp(String filePath) async {
+  final home = Platform.environment['HOME'];
+  final rootDir = Directory('$home/.dartos/apps');
 
-  if (!appFile.existsSync()) {
-    print("❌ Archivo no encontrado");
-    return;
+  if (!rootDir.existsSync()) {
+    rootDir.createSync(recursive: true);
   }
 
-  final bytes = appFile.readAsBytesSync();
+  final bytes = File(filePath).readAsBytesSync();
   final archive = ZipDecoder().decodeBytes(bytes);
 
-  // Leer manifest primero
-  ArchiveFile? manifestArchive;
-  for (var file in archive.files) {
-    if (file.name == 'manifest.json') {
-      manifestArchive = file;
+  String? packageName;
+
+  for (final file in archive) {
+    if (file.name.endsWith('manifest.json')) {
+      final content = utf8.decode(file.content as List<int>);
+      final json = jsonDecode(content);
+      packageName = json['package'];
       break;
     }
   }
 
-  if (manifestArchive == null) {
-    print("❌ manifest.json no encontrado");
+  if (packageName == null) {
+    print("❌ Manifest inválido");
     return;
   }
 
-  final manifestContent = utf8.decode(manifestArchive.content as List<int>);
-  final manifest = jsonDecode(manifestContent);
+  final appDir = Directory('${rootDir.path}/$packageName');
 
-  final packageName = manifest['package'];
-  final home = Platform.environment['HOME'];
-
-  if (home == null) {
-    print("❌ No se pudo determinar el HOME del usuario");
-    return;
+  if (appDir.existsSync()) {
+    appDir.deleteSync(recursive: true);
   }
 
-  final installDir = Directory('$home/.dartos/apps/$packageName');
+  for (final file in archive) {
+    final filename = file.name;
 
-  if (installDir.existsSync()) {
-    installDir.deleteSync(recursive: true);
-  }
-
-  installDir.createSync(recursive: true);
-
-  for (var file in archive.files) {
-    final outFile = File('${installDir.path}/${file.name}');
-    outFile.createSync(recursive: true);
-    outFile.writeAsBytesSync(file.content as List<int>);
+    if (file.isFile) {
+      final outFile = File('${appDir.path}/$filename');
+      outFile.createSync(recursive: true);
+      outFile.writeAsBytesSync(file.content as List<int>);
+    }
   }
 
   print("✅ App instalada: $packageName");
@@ -212,7 +177,7 @@ void runApp(String packageName) async {
 }
 
 void listApps() {
-  final appsDir = Directory('/home/fox/.dartos/apps');
+  final appsDir = Directory('${getDartosRoot()}/apps');
 
   if (!appsDir.existsSync()) {
     print("📦 No hay apps instaladas.");
@@ -244,5 +209,42 @@ void listApps() {
     print("• $name");
     print("   Package: $package");
     print("   Version: $version\n");
+  }
+}
+
+String getDartosRoot() {
+  if (Platform.isLinux) {
+    final xdg = Platform.environment['XDG_DATA_HOME'];
+    if (xdg != null && xdg.isNotEmpty) {
+      return '$xdg/dartos';
+    }
+    return '${Platform.environment['HOME']}/.local/share/dartos';
+  }
+
+  if (Platform.isMacOS) {
+    return '${Platform.environment['HOME']}/Library/Application Support/dartos';
+  }
+
+  if (Platform.isWindows) {
+    return '${Platform.environment['APPDATA']}\dartos';
+  }
+
+  throw UnsupportedError('Plataforma no soportada');
+}
+
+Future<void> _copyDirectory(Directory source, Directory destination) async {
+  if (!destination.existsSync()) {
+    destination.createSync(recursive: true);
+  }
+
+  await for (var entity in source.list(recursive: false)) {
+    if (entity is Directory) {
+      await _copyDirectory(
+        entity,
+        Directory('${destination.path}/${entity.uri.pathSegments.last}'),
+      );
+    } else if (entity is File) {
+      await entity.copy('${destination.path}/${entity.uri.pathSegments.last}');
+    }
   }
 }
