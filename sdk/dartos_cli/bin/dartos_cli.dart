@@ -89,36 +89,36 @@ Future<void> packApp(String packageName) async {
     return;
   }
 
-  final outputPath = File("$packageName.dartapp").absolute.path;
+  final archive = Archive();
 
-  // Si ya existe, elimínalo
-  final existing = File(outputPath);
-  if (existing.existsSync()) {
-    existing.deleteSync();
-  }
+  // 🔹 Agregar manifest como manifest.json
+  final manifest = jsonEncode({
+    "package": packageName,
+    "arch": Platform.version.contains("arm64") ? "arm64" : "x64",
+  });
 
-  final encoder = ZipFileEncoder();
-  encoder.create(outputPath);
-
-  // Crear manifest temporal
-  final manifestFile = File("manifest_temp.json");
-  manifestFile.writeAsStringSync(
-    jsonEncode({
-      "package": packageName,
-      "arch": Platform.localHostname.contains("arm") ? "arm64" : "x64",
-    }),
+  archive.addFile(
+    ArchiveFile('manifest.json', manifest.length, utf8.encode(manifest)),
   );
 
-  encoder.addFile(manifestFile);
+  // 🔹 Agregar bundle completo manualmente
+  await for (final entity in bundleDir.list(recursive: true)) {
+    if (entity is File) {
+      final relativePath = entity.path.substring(bundleDir.path.length + 1);
 
-  // Agregar SOLO el bundle real
-  encoder.addDirectory(bundleDir, includeDirName: true);
+      final bytes = await entity.readAsBytes();
 
-  encoder.close();
+      archive.addFile(ArchiveFile('bundle/$relativePath', bytes.length, bytes));
+    }
+  }
 
-  manifestFile.deleteSync();
+  final zipEncoder = ZipEncoder();
+  final zipData = zipEncoder.encode(archive);
 
-  print("✅ Paquete generado correctamente: $outputPath");
+  final outputFile = File('$packageName.dartapp');
+  await outputFile.writeAsBytes(zipData);
+
+  print("✅ Paquete generado correctamente: ${outputFile.path}");
 }
 
 Future<void> installApp(String filePath) async {
