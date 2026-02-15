@@ -190,17 +190,19 @@ void installApp(String filePath) {
   print("✅ App instalada: $packageName");
 }
 
-void runApp(String packageName) {
-  final appPath = '/home/fox/.dartos/apps/$packageName/app.dill';
+void runApp(String packageName) async {
+  try {
+    final socket = await Socket.connect('127.0.0.1', 4040);
 
-  final file = File(appPath);
+    socket.write("RUN $packageName");
+    await socket.flush();
+    await socket.close();
 
-  if (!file.existsSync()) {
-    print("❌ App no encontrada");
-    return;
+    print("📤 Comando enviado al Shell");
+  } catch (e) {
+    print("❌ No se pudo conectar al Shell.");
+    print("   ¿Está DartOS Shell corriendo?");
   }
-
-  Process.start('dart', [appPath], mode: ProcessStartMode.inheritStdio);
 }
 
 void listApps() {
